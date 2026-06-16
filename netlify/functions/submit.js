@@ -1,8 +1,9 @@
 const { Readable } = require('stream');
+const { getStore } = require('@netlify/blobs');
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby_FesyrGOO_ePT9je2bCblUw1B0kCQbmxmyHK0iijbo5xGlUGl41zFM66Izu2dwdhidw/exec';
 
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -41,23 +42,48 @@ exports.handler = async (event) => {
       readable.pipe(bb);
     });
 
-    // PASO 1: Mandar solo los datos de texto al Apps Script (sin CV)
+    // PASO 1: Guardar CV en Netlify Blobs
+    let cvLink = '';
+    if (cvBuffer && cvBuffer.length > 0) {
+      try {
+        const store = getStore({
+          name: 'cvs',
+          consistency: 'strong',
+          siteID: context.site.id,
+          token: process.env.NETLIFY_AUTH_TOKEN
+        });
+
+        const fecha    = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+        const apellido = fields.apellido || 'SinApellido';
+        const nombre   = fields.nombre   || 'SinNombre';
+        const puesto   = fields.puesto_aplica || 'CV';
+        const ext      = cvName.split('.').pop();
+        const key      = `${apellido}_${nombre}_${puesto}_${fecha}.${ext}`;
+
+        await store.set(key, cvBuffer, { metadata: { contentType: cvMime } });
+        cvLink = `https://${context.site.id}.netlify.app/.netlify/blobs/${key}`;
+        console.log('CV guardado en Blobs:', key);
+      } catch(e) {
+        console.error('Error guardando CV:', e.message);
+        cvLink = 'Error al guardar CV';
+      }
+    }
+
+    // PASO 2: Mandar datos + link CV a Apps Script
     const params = new URLSearchParams();
     Object.entries(fields).forEach(([k, v]) => params.append(k, String(v)));
-    
-    const dataUrl = `${APPS_SCRIPT_URL}?${params.toString()}`;
-    console.log('Mandando datos a Sheets, URL length:', dataUrl.length);
-    
-    const dataRes = await fetch(dataUrl, { method: 'GET', redirect: 'follow' });
+    params.append('cv_link', cvLink);
+
+    const dataRes = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`, {
+      method: 'GET',
+      redirect: 'follow'
+    });
     console.log('Sheets status:', dataRes.status);
 
-    // PASO 2: Si hay CV, mandarlo por separado en chunks pequeños
-    // (por ahora guardamos solo el nombre, el CV se suma después)
-    
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ status: 'ok' })
+      body: JSON.stringify({ status: 'ok', cvLink })
     };
 
   } catch (err) {
