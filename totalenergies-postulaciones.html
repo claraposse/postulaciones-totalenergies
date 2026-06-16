@@ -659,16 +659,18 @@ function gB(){if(cur===1)return;steps[cur-1].classList.remove('active');cur--;st
 
 async function submit(){
   bn.disabled=true;bt.textContent='Enviando…';ba.style.display='none';bs.style.display='block';banner.style.display='none';
-  const data={timestamp:new Date().toLocaleString('es-AR'),nombre:vl('fn'),apellido:vl('fa'),email:vl('fe'),telefono:vl('ft'),provincia:vl('fp'),ciudad:vl('fci'),nivel_edu:vl('fni'),carrera:vl('fca'),institucion:vl('fi'),egreso:vl('feg'),ingles:ch('ing'),otros_idiomas:ch('idioma'),etapa:ch('eta'),ultima_empresa:vl('fem'),ultimo_rol:vl('fro'),sector:ch('sec'),puesto_aplica:vl('fpuesto'),area:ch('area'),tipo_posicion:vl('ftp'),cv_nombre:cvF?cvF.name:(fc.files[0]?fc.files[0].name:''),linkedin:vl('fli'),portfolio:vl('fport'),disponibilidad:ch('dis'),reubicacion:ch('reu'),moneda:vl('fmon'),pretension:vl('fsal'),canal:ch('fue'),valor:ch('val'),motivacion:vl('fmo')};
   try{
-    const params=new URLSearchParams();
-    Object.entries(data).forEach(([k,v])=>params.append(k,String(v)));
-    await fetch(SHEETS_URL+'?'+params.toString(),{method:'GET',mode:'no-cors'});
-    await new Promise(r=>setTimeout(r,1800));
-    onSuccess(data.email);
+    const fd=new FormData();
+    const data={timestamp:new Date().toLocaleString('es-AR'),nombre:vl('fn'),apellido:vl('fa'),email:vl('fe'),telefono:vl('ft'),provincia:vl('fp'),ciudad:vl('fci'),nivel_edu:vl('fni'),carrera:vl('fca'),institucion:vl('fi'),egreso:vl('feg'),ingles:ch('ing'),otros_idiomas:ch('idioma'),etapa:ch('eta'),ultima_empresa:vl('fem'),ultimo_rol:vl('fro'),sector:ch('sec'),puesto_aplica:vl('fpuesto'),area:ch('area'),tipo_posicion:vl('ftp'),cv_nombre:cvF?cvF.name:(fc.files[0]?fc.files[0].name:''),linkedin:vl('fli'),disponibilidad:ch('dis'),reubicacion:ch('reu'),moneda:vl('fmon'),pretension:vl('fsal'),canal:ch('fue'),valor:ch('val'),motivacion:vl('fmo')};
+    Object.entries(data).forEach(([k,v])=>fd.append(k,String(v)));
+    const fileToSend=cvF||(fc.files[0]||null);
+    if(fileToSend)fd.append('cv_file',fileToSend,fileToSend.name);
+    const res=await fetch('/.netlify/functions/submit',{method:'POST',body:fd});
+    const r=await res.json();
+    if(r.status==='ok')onSuccess(data.email);
+    else onError('Error al enviar. Intentá de nuevo.');
   }catch(err){
-    await new Promise(r=>setTimeout(r,1800));
-    onSuccess(data.email);
+    onError('Error de conexión. Verificá tu internet.');
   }
 }
 
