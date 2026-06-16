@@ -60,7 +60,7 @@ exports.handler = async (event) => {
         const key      = `${apellido}_${nombre}_${puesto}_${fecha}.${ext}`;
 
         await store.set(key, cvBuffer, { metadata: { contentType: cvMime } });
-        cvLink = `https://postulaciones-totalenergies.netlify.app/.netlify/blobs/cvs/${key}`;
+        cvLink = `https://postulaciones-totalenergies.netlify.app/.netlify/functions/cv?key=${key}`;
         console.log('CV guardado:', key);
       } catch(e) {
         console.error('Error guardando CV:', e.message);
