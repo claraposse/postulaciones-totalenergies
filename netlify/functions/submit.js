@@ -3,7 +3,7 @@ const { getStore } = require('@netlify/blobs');
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby_FesyrGOO_ePT9je2bCblUw1B0kCQbmxmyHK0iijbo5xGlUGl41zFM66Izu2dwdhidw/exec';
 
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -48,31 +48,30 @@ exports.handler = async (event, context) => {
       try {
         const store = getStore({
           name: 'cvs',
-          consistency: 'strong',
-          siteID: context.site.id,
+          siteID: process.env.MY_SITE_ID,
           token: process.env.NETLIFY_AUTH_TOKEN
         });
 
         const fecha    = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
-        const apellido = fields.apellido || 'SinApellido';
-        const nombre   = fields.nombre   || 'SinNombre';
-        const puesto   = fields.puesto_aplica || 'CV';
-        const ext      = cvName.split('.').pop();
+        const apellido = (fields.apellido || 'SinApellido').replace(/\s/g, '-');
+        const nombre   = (fields.nombre   || 'SinNombre').replace(/\s/g, '-');
+        const puesto   = (fields.puesto_aplica || 'CV').replace(/\s/g, '-');
+        const ext      = cvName.split('.').pop() || 'pdf';
         const key      = `${apellido}_${nombre}_${puesto}_${fecha}.${ext}`;
 
         await store.set(key, cvBuffer, { metadata: { contentType: cvMime } });
-        cvLink = `https://${context.site.id}.netlify.app/.netlify/blobs/${key}`;
-        console.log('CV guardado en Blobs:', key);
+        cvLink = `https://postulaciones-totalenergies.netlify.app/.netlify/blobs/cvs/${key}`;
+        console.log('CV guardado:', key);
       } catch(e) {
         console.error('Error guardando CV:', e.message);
-        cvLink = 'Error al guardar CV';
+        cvLink = '';
       }
     }
 
-    // PASO 2: Mandar datos + link CV a Apps Script
+    // PASO 2: Mandar datos + link a Apps Script
     const params = new URLSearchParams();
     Object.entries(fields).forEach(([k, v]) => params.append(k, String(v)));
-    params.append('cv_link', cvLink);
+    if (cvLink) params.append('cv_link', cvLink);
 
     const dataRes = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`, {
       method: 'GET',
@@ -83,7 +82,7 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ status: 'ok', cvLink })
+      body: JSON.stringify({ status: 'ok' })
     };
 
   } catch (err) {
