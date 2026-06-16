@@ -13,10 +13,6 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers, body: '' };
   }
 
-  console.log('=== INICIO submit ===');
-  console.log('Method:', event.httpMethod);
-  console.log('Content-Type:', event.headers['content-type']);
-
   try {
     const busboy = require('busboy');
     const fields = {};
@@ -26,23 +22,16 @@ exports.handler = async (event) => {
 
     await new Promise((resolve, reject) => {
       const bb = busboy({ headers: event.headers });
-      bb.on('field', (name, val) => { 
-        fields[name] = val;
-        console.log('Campo recibido:', name, '=', val.substring(0, 50));
-      });
+      bb.on('field', (name, val) => { fields[name] = val; });
       bb.on('file', (name, file, info) => {
         cvName = info.filename;
         cvMime = info.mimeType;
-        console.log('Archivo recibido:', cvName, cvMime);
         const chunks = [];
         file.on('data', chunk => chunks.push(chunk));
-        file.on('end', () => { 
-          cvBuffer = Buffer.concat(chunks); 
-          console.log('Tamaño CV:', cvBuffer.length, 'bytes');
-        });
+        file.on('end', () => { cvBuffer = Buffer.concat(chunks); });
       });
       bb.on('finish', resolve);
-      bb.on('error', (err) => { console.error('Busboy error:', err); reject(err); });
+      bb.on('error', reject);
       const body = event.isBase64Encoded
         ? Buffer.from(event.body, 'base64')
         : Buffer.from(event.body || '');
@@ -52,34 +41,19 @@ exports.handler = async (event) => {
       readable.pipe(bb);
     });
 
-    console.log('Campos totales recibidos:', Object.keys(fields).length);
-    console.log('Nombre:', fields.nombre, 'Email:', fields.email);
-
-    // Armar params para Apps Script
+    // PASO 1: Mandar solo los datos de texto al Apps Script (sin CV)
     const params = new URLSearchParams();
     Object.entries(fields).forEach(([k, v]) => params.append(k, String(v)));
+    
+    const dataUrl = `${APPS_SCRIPT_URL}?${params.toString()}`;
+    console.log('Mandando datos a Sheets, URL length:', dataUrl.length);
+    
+    const dataRes = await fetch(dataUrl, { method: 'GET', redirect: 'follow' });
+    console.log('Sheets status:', dataRes.status);
 
-    if (cvBuffer && cvBuffer.length > 0) {
-      console.log('Convirtiendo CV a base64...');
-      params.append('cv_base64', cvBuffer.toString('base64'));
-      params.append('cv_mime',   cvMime || 'application/octet-stream');
-      params.append('cv_name',   cvName || fields.cv_nombre || 'CV');
-    } else {
-      console.log('No se recibió archivo CV');
-    }
-
-    const url = `${APPS_SCRIPT_URL}?${params.toString()}`;
-    console.log('Llamando Apps Script, URL length:', url.length);
-
-    const res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow'
-    });
-
-    console.log('Respuesta Apps Script status:', res.status);
-    const text = await res.text();
-    console.log('Respuesta Apps Script body:', text.substring(0, 200));
-
+    // PASO 2: Si hay CV, mandarlo por separado en chunks pequeños
+    // (por ahora guardamos solo el nombre, el CV se suma después)
+    
     return {
       statusCode: 200,
       headers,
@@ -87,8 +61,7 @@ exports.handler = async (event) => {
     };
 
   } catch (err) {
-    console.error('ERROR en submit:', err.message);
-    console.error('Stack:', err.stack);
+    console.error('ERROR:', err.message);
     return {
       statusCode: 500,
       headers,
